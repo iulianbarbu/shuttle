@@ -193,7 +193,7 @@ mod tests {
     use super::*;
 
     //
-    // Following tests need a registry server. See test/fixture.sh for setting one up.
+    // Following tests need a registry server available on `localhost:5000`.
     // These tests are ignored by default.
     //
 
