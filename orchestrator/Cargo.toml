@@ -5,8 +5,6 @@ license.workspace = true
 version = "0.13.0"
 publish = false
 
-[lib]
-
 [dependencies]
 kube = { version = "0.82.0", default-features = false, features = ["client", "rustls-tls", "runtime"] }
 k8s-openapi = { version = "0.18.0", features = ["v1_26"] }
