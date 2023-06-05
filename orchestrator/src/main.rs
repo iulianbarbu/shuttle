@@ -10,6 +10,7 @@ use std::io;
 use tracing::info;
 
 const PODS_COUNT: u16 = 1000;
+const START_POD: u16 = 0;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> io::Result<()> {
@@ -33,81 +34,65 @@ async fn main() -> io::Result<()> {
     // Create Pod blog spec. By default, the images are retrieved from DockerHub.
     // To specify a different registry we must use an image name as described here:
     // https://kubernetes.io/docs/concepts/containers/images/#image-names.
-    // info!("Creating 10 pod instances");
-    // for i in 0..PODS_COUNT {
-    //     let mut blog_name = "blog-".to_string();
-    //     blog_name.push_str(&i.to_string());
-    //     let p: Pod = serde_json::from_value(json!({
-    //         "apiVersion": "v1",
-    //         "kind": "Pod",
-    //         "metadata": { "name": blog_name },
-    //         "spec": {
-    //             "containers": [{
-    //               "name": blog_name,
-    //               "image": "clux/blog"
-    //             }],
-    //         }
-    //     }))?;
+    info!("Creating 10 pod instances");
+    for idx in START_POD..PODS_COUNT {
+        let mut shuttle_service_name = "shuttle-service-".to_string();
+        shuttle_service_name.push_str(&idx.to_string());
+        let p: Pod = serde_json::from_value(json!({
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": { "name": shuttle_service_name },
+            "spec": {
+                "containers": [{
+                  "name": shuttle_service_name,
+                  "image": "localhost:5000/shuttle-service:latest"
+                }],
+            }
+        }))?;
 
-    //     // Create the pod.
-    //     let pp = PostParams::default();
-    //     match pods.create(&pp, &p).await {
-    //         Ok(o) => {
-    //             let name = o.name_any();
-    //             assert_eq!(p.name_any(), name);
-    //             info!("Created {}", name);
-    //         }
-    //         Err(kube::Error::Api(ae)) => assert_eq!(ae.code, 409), // if you skipped delete, for instance
-    //         Err(_e) => panic!("error"),                            // any other case is probably bad
-    //     }
+        // Create the pod.
+        let pp = PostParams::default();
+        match pods.create(&pp, &p).await {
+            Ok(o) => {
+                let name = o.name_any();
+                assert_eq!(p.name_any(), name);
+                info!("Created {}", name);
+            }
+            Err(kube::Error::Api(ae)) => assert_eq!(ae.code, 409), // if you skipped delete, for instance
+            Err(_e) => panic!("error"),                            // any other case is probably bad
+        }
 
-    //     // Watch it phase for a few seconds.
-    //     let establish = await_condition(pods.clone(), blog_name.as_str(), is_pod_running());
-    //     let _ = tokio::time::timeout(std::time::Duration::from_secs(15), establish).await?;
+        // Watch it phase for a few seconds.
+        let establish = await_condition(
+            pods.clone(),
+            shuttle_service_name.as_str(),
+            is_pod_running(),
+        );
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(30), establish).await?;
 
-    //     // Verify we can get it.
-    //     info!("Get Pod blog");
-    //     let p1cpy = pods.get(blog_name.as_str()).await.unwrap();
-    //     if let Some(spec) = &p1cpy.spec {
-    //         info!("Got blog pod with containers: {:?}", spec.containers);
-    //         assert_eq!(spec.containers[0].name, blog_name.as_str());
-    //     }
-    // }
-
-    // // Replace its spec.
-    // info!("Patch Pod blog");
-    // let patch = json!({
-    //     "metadata": {
-    //         "resourceVersion": p1cpy.resource_version(),
-    //     },
-    //     "spec": {
-    //         "activeDeadlineSeconds": 5
-    //     }
-    // });
-    // let patchparams = PatchParams::default();
-    // let p_patched = pods
-    //     .patch("blog", &patchparams, &Patch::Merge(&patch))
-    //     .await
-    //     .unwrap();
-    // assert_eq!(p_patched.spec.unwrap().active_deadline_seconds, Some(5));
-
-    // List the pods.
-    // let lp = ListParams::default().fields(&format!("metadata.name={}", "blog")); // only want results for our pod
-    // for p in pods.list(&lp).await.unwrap() {
-    //     info!("Found Pod: {}", p.name_any());
-    // }
+        // Verify we can get it.
+        info!("Get Pod shuttle-service-{}", idx);
+        let p1cpy = pods.get(shuttle_service_name.as_str()).await.unwrap();
+        if let Some(spec) = &p1cpy.spec {
+            info!(
+                "Got shuttle-service pod with containers: {:?}",
+                spec.containers
+            );
+            assert_eq!(spec.containers[0].name, shuttle_service_name.as_str());
+        }
+    }
 
     // Delete it.
-    for i in 0..PODS_COUNT {
-        let mut blog_name = "blog-".to_string();
-        blog_name.push_str(&i.to_string());
+    for idx in 0..PODS_COUNT {
+        let mut shuttle_service_name = "shuttle-service-".to_string();
+        shuttle_service_name.push_str(&idx.to_string());
         let dp = DeleteParams::default();
-        pods.delete(blog_name.as_str(), &dp)
+        pods.delete(shuttle_service_name.as_str(), &dp)
             .await
             .unwrap()
             .map_left(|pdel| {
-                assert_eq!(pdel.name_any(), blog_name);
-                info!("Deleting blog pod started: {:?}", pdel);
+                assert_eq!(pdel.name_any(), shuttle_service_name);
+                info!("Deleting shuttle-service-{} pod started: {:?}", idx, pdel);
             });
     }
 
