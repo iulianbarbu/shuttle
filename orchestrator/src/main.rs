@@ -45,7 +45,7 @@ async fn main() -> io::Result<()> {
             "spec": {
                 "containers": [{
                   "name": shuttle_service_name,
-                  "image": "localhost:5000/shuttle-service:latest"
+                  "image": "localhost:32000/shuttle-service:latest"
                 }],
             }
         }))?;
