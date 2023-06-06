@@ -68,7 +68,7 @@ async fn main() -> io::Result<()> {
             shuttle_service_name.as_str(),
             is_pod_running(),
         );
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(30), establish).await?;
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(60), establish).await?;
 
         // Verify we can get it.
         info!("Get Pod shuttle-service-{}", idx);
