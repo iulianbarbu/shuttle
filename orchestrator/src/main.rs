@@ -45,7 +45,7 @@ async fn main() -> io::Result<()> {
             "spec": {
                 "containers": [{
                   "name": shuttle_service_name,
-                  "image": "192.168.49.2:5000/shuttle-service:latest"
+                  "image": "public.ecr.aws/shuttle-dev/shuttle-service:latest"
                 }],
             }
         }))?;
