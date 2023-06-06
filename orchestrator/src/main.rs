@@ -9,7 +9,7 @@ use serde_json::json;
 use std::io;
 use tracing::info;
 
-const PODS_COUNT: u16 = 1000;
+const PODS_COUNT: u16 = 2000;
 const START_POD: u16 = 0;
 
 #[tokio::main(flavor = "multi_thread")]
