@@ -1,11 +1,11 @@
 pub mod database;
 
+use shuttle_proto::resource_recorder::{record_request, ResourcesResponse, ResultResponse};
 use sqlx::{
     sqlite::{SqliteArgumentValue, SqliteValueRef},
     Database, Sqlite,
 };
 use std::{borrow::Cow, fmt::Display, str::FromStr};
-use uuid::Uuid;
 
 pub use self::database::Type as DatabaseType;
 
@@ -14,26 +14,16 @@ pub use self::database::Type as DatabaseType;
 pub trait ResourceManager: Clone + Send + Sync + 'static {
     type Err: std::error::Error;
 
-    async fn insert_resource(&self, resource: &Resource) -> Result<(), Self::Err>;
-    async fn get_resources(&self, service_id: &Uuid) -> Result<Vec<Resource>, Self::Err>;
-}
-
-#[derive(sqlx::FromRow, Debug, Eq, PartialEq)]
-pub struct Resource {
-    pub service_id: Uuid,
-    pub r#type: Type,
-    pub data: serde_json::Value,
-    pub config: serde_json::Value,
-}
-
-impl From<Resource> for shuttle_common::resource::Response {
-    fn from(resource: Resource) -> Self {
-        shuttle_common::resource::Response {
-            r#type: resource.r#type.into(),
-            config: resource.config,
-            data: resource.data,
-        }
-    }
+    async fn insert_resource(
+        &self,
+        resource: &record_request::Resource,
+        service_id: &ulid::Ulid,
+        project_id: &ulid::Ulid,
+    ) -> Result<ResultResponse, Self::Err>;
+    async fn get_service_resources(
+        &self,
+        service_id: &ulid::Ulid,
+    ) -> Result<ResourcesResponse, Self::Err>;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
