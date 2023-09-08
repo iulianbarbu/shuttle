@@ -539,7 +539,7 @@ pub async fn start_deployment(
     }
 }
 
-#[instrument(skip_all, fields(%project_name, %deployment_id))]
+#[instrument(skip_all, fields(%project_name))]
 #[utoipa::path(
     get,
     path = "/projects/{project_name}/deployments/{deployment_id}/logs",
