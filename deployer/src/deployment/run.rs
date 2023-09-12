@@ -71,6 +71,7 @@ pub async fn task(
                     active_deployment_getter.clone(),
                     runtime_manager.clone(),
                 );
+                let runtime_manager_clone = runtime_manager.clone();
                 let cleanup = move |response: Option<SubscribeStopResponse>| {
                     debug!(response = ?response,  "stop client response: ");
 
@@ -80,20 +81,23 @@ pub async fn task(
                             StopReason::End => completed_cleanup(&id),
                             StopReason::Crash => crashed_cleanup(
                                 &id,
+                                runtime_manager_clone,
                                 Error::Run(anyhow::Error::msg(response.message).into()),
-                            ),
+                            )
                         }
                     } else {
                         crashed_cleanup(
                             &id,
+                            runtime_manager_clone,
                             Error::Runtime(anyhow::anyhow!(
                                 "stop subscribe channel stopped unexpectedly"
                             )),
-                        )
+                        );
                     }
-                };
-                let runtime_manager = runtime_manager.clone();
 
+                };
+
+                let runtime_manager = runtime_manager.clone();
                 set.spawn(async move {
                     let parent_cx = global::get_text_map_propagator(|propagator| {
                         propagator.extract(&built.tracing_context)
@@ -177,12 +181,24 @@ fn stopped_cleanup(_id: &Uuid) {
     info!("service was stopped by the user");
 }
 
-#[instrument(skip(_id), fields(id = %_id, state = %State::Crashed))]
-fn crashed_cleanup(_id: &Uuid, error: impl std::error::Error + 'static) {
+#[instrument(skip(id, runtime_manager), fields(id = %id, state = %State::Crashed))]
+fn crashed_cleanup(
+    id: &Uuid,
+    runtime_manager: Arc<Mutex<RuntimeManager>>,
+    error: impl std::error::Error + 'static,
+) {
     error!(
         error = &error as &dyn std::error::Error,
-        "service encountered an error"
+        "service encountered an error, killing the runtime"
     );
+
+    // Fire a task which we'll not wait. This initializse the runtime process killing,
+    // if it is the case.
+    let id = *id;
+    tokio::spawn(async move {
+        runtime_manager.lock().await.kill_process(id);
+        info!(%id, "initiated runtime process killing");
+    });
 }
 
 #[instrument(skip(_id), fields(id = %_id, state = %State::Crashed))]
@@ -253,11 +269,12 @@ impl Built {
         let runtime_client = runtime_manager
             .lock()
             .await
-            .get_runtime_client(self.id, alpha_runtime_path.clone())
+            .create_runtime_client(self.id, alpha_runtime_path.clone())
             .await
             .map_err(Error::Runtime)?;
 
         kill_old_deployments.await?;
+
         // Execute loaded service
         load(
             self.service_name.clone(),
@@ -392,21 +409,34 @@ async fn run(
     deployment_updater: impl DeploymentUpdater,
     cleanup: impl FnOnce(Option<SubscribeStopResponse>) + Send + 'static,
 ) {
-    deployment_updater
-        .set_address(&id, &address)
-        .await
-        .expect("to set deployment address");
+    if let Err(err) = deployment_updater.set_address(&id, &address).await {
+        // Clean up based on a stop response built outside the runtime
+        cleanup(Some(SubscribeStopResponse {
+            reason: 2,
+            message: format!("errored while setting the new deployer address: {}", err),
+        }));
+        return;
+    }
 
     let start_request = tonic::Request::new(StartRequest {
         ip: address.to_string(),
     });
 
     // Subscribe to stop before starting to catch immediate errors
-    let mut stream = runtime_client
+    let mut stream = match runtime_client
         .subscribe_stop(tonic::Request::new(SubscribeStopRequest {}))
         .await
-        .unwrap()
-        .into_inner();
+    {
+        Ok(stream) => stream.into_inner(),
+        Err(err) => {
+            // Clean up based on a stop response built outside the runtime
+            cleanup(Some(SubscribeStopResponse {
+                reason: 2,
+                message: format!("errored while opening the StopSubscribe channel: {}", err),
+            }));
+            return;
+        }
+    };
 
     info!("starting service");
     let response = runtime_client.start(start_request).await;
@@ -416,9 +446,14 @@ async fn run(
             info!(response = ?response.into_inner(),  "start client response: ");
 
             // Wait for stop reason
-            let reason = stream.message().await.expect("message from tonic stream");
-
-            cleanup(reason);
+            match stream.message().await {
+                Ok(reason) => cleanup(reason),
+                // Stream closed abruptly, most probably runtime crashed.
+                Err(err) => cleanup(Some(SubscribeStopResponse {
+                    reason: 2,
+                    message: format!("runtime StopSubscribe channel errored: {}", err),
+                })),
+            }
         }
         Err(ref status) if status.code() == Code::InvalidArgument => {
             cleanup(Some(SubscribeStopResponse {
