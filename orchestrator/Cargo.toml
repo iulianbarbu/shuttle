@@ -6,3 +6,20 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+async-trait = { workspace = true }
+bollard = "0.14.0"
+fqdn = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+hyper = { workspace = true, features = ["stream"] }
+once_cell = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true, features = ["default"] }
+ulid = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v4"] }
+
+[dependencies.shuttle-common]
+workspace = true
+features = ["backend", "models"]
