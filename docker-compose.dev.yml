@@ -4,6 +4,7 @@ volumes:
   logger-postgres-vol:
   control-db-postgres-vol:
 
+
 services:
   provisioner:
     entrypoint:
@@ -62,12 +63,46 @@ services:
 
         exec /usr/local/bin/shuttle-auth "$${@:0}"
     command:
-      - "--db-connection-uri=${CONTROL_DB_POSTGRES_URI}"
+      - "--db-connection-uri=${CONTROL_DB_POSTGRES_URI}postgres"
       - "start"
       - "--address=0.0.0.0:8000"
       - "--stripe-secret-key=${STRIPE_SECRET_KEY}"
       # used only for local development
       - "--jwt-signing-private-key=LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1DNENBUUF3QlFZREsyVndCQ0lFSUR5V0ZFYzhKYm05NnA0ZGNLTEwvQWNvVUVsbUF0MVVKSTU4WTc4d1FpWk4KLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQo="
+  gateway:
+    depends_on:
+      - control-db
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        until </dev/tcp/control-db/5432
+        do
+          >&2 echo "The control DB is not available yet - sleeping"
+          sleep 1
+        done
+
+        >&2 echo "The control DB is available - starting shuttle-gateway"
+
+        exec /usr/local/bin/shuttle-gateway "$${@:0}"
+    command:
+      - "--db-state=${CONTROL_DB_POSTGRES_URI}gateway"
+      - "--fs-state=/var/lib/shuttle"
+      - "start"
+      - "--control=0.0.0.0:8001"
+      - "--user=0.0.0.0:8000"
+      - "--bouncer=0.0.0.0:7999"
+      - "--image=${CONTAINER_REGISTRY}/deployer:${DEPLOYER_TAG}"
+      - "--prefix=shuttle_"
+      - "--network-name=${STACK}_user-net"
+      - "--docker-host=/var/run/docker.sock"
+      - "--auth-uri=http://auth:8000"
+      - "--deploys-api-key=${DEPLOYS_API_KEY}"
+      - "--provisioner-host=provisioner"
+      - "--builder-host=builder"
+      - "--proxy-fqdn=${APPS_FQDN}"
+      - "--use-tls=${USE_TLS}"
+      - "--admin-key=${GATEWAY_ADMIN_KEY}"
   otel-collector:
     ports:
       - 4317:4317

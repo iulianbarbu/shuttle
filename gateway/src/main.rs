@@ -12,13 +12,10 @@ use shuttle_gateway::proxy::UserServiceBuilder;
 use shuttle_gateway::service::{GatewayService, MIGRATIONS};
 use shuttle_gateway::tls::make_tls_acceptor;
 use shuttle_gateway::worker::{Worker, WORKER_QUEUE_SIZE};
-use sqlx::migrate::MigrateDatabase;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
-use sqlx::{Sqlite, SqlitePool};
+use sqlx::PgPool;
 use std::io::{self, Cursor};
 
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
@@ -39,39 +36,18 @@ async fn main() -> io::Result<()> {
 
     setup_tracing(tracing_subscriber::registry(), Backend::Gateway, None);
 
-    let db_path = args.state.join("gateway.sqlite");
-    let db_uri = db_path.to_str().unwrap();
+    let opts = args.db_state.parse().unwrap();
+    let pool = PgPool::connect_with(opts).await.unwrap();
 
-    if !db_path.exists() {
-        Sqlite::create_database(db_uri).await.unwrap();
-    }
-
-    info!(
-        "state db: {}",
-        std::fs::canonicalize(&args.state)
-            .unwrap()
-            .to_string_lossy()
-    );
-
-    let sqlite_options = SqliteConnectOptions::from_str(db_uri)
-        .unwrap()
-        .journal_mode(SqliteJournalMode::Wal)
-        .synchronous(SqliteSynchronous::Normal)
-        // Set the ulid0 extension for generating ULID's in migrations.
-        // This uses the ulid0.so file in the crate root, with the
-        // LD_LIBRARY_PATH env set in build.rs.
-        .extension("ulid0");
-
-    let db = SqlitePool::connect_with(sqlite_options).await.unwrap();
-    MIGRATIONS.run(&db).await.unwrap();
+    MIGRATIONS.run(&pool).await.unwrap();
 
     match args.command {
-        Commands::Start(start_args) => start(db, args.state, posthog_client, start_args).await,
+        Commands::Start(start_args) => start(pool, args.fs_state, posthog_client, start_args).await,
     }
 }
 
 async fn start(
-    db: SqlitePool,
+    db: PgPool,
     fs: PathBuf,
     posthog_client: async_posthog::Client,
     args: StartArgs,

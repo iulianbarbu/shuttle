@@ -39,7 +39,7 @@ impl ClaimExt for Claim {
     }
 
     fn can_create_project(&self, current_count: u32) -> bool {
-        self.is_admin() || self.limits.project_limit() > current_count
+        self.is_admin() || self.limits.project_limit() > current_count as i64
     }
 
     #[instrument(skip_all)]

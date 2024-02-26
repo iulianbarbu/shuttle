@@ -30,6 +30,7 @@ use uuid::Uuid;
 /// }
 ///```
 ///
+#[derive(Clone)]
 pub struct DockerInstance {
     container_name: String,
     base_uri: String,

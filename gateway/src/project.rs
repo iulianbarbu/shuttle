@@ -957,7 +957,7 @@ where
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProjectAttaching {
-    container: ContainerInspectResponse,
+    pub container: ContainerInspectResponse,
     // Use default for backward compatibility. Can be removed when all projects in the DB have this property set
     #[serde(default)]
     recreate_count: usize,
@@ -1095,7 +1095,7 @@ where
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProjectStarting {
-    container: ContainerInspectResponse,
+    pub container: ContainerInspectResponse,
     // Use default for backward compatibility. Can be removed when all projects in the DB have this property set
     #[serde(default)]
     restart_count: usize,
@@ -1197,7 +1197,7 @@ where
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProjectStarted {
-    container: ContainerInspectResponse,
+    pub container: ContainerInspectResponse,
     service: Option<Service>,
     // Use default for backward compatibility. Can be removed when all projects in the DB have this property set
     #[serde(default)]
@@ -1281,7 +1281,7 @@ where
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProjectReady {
-    container: ContainerInspectResponse,
+    pub container: ContainerInspectResponse,
     service: Service,
     // Use default for backward compatibility. Can be removed when all projects in the DB have this property set
     #[serde(default, deserialize_with = "ok_or_default")]
@@ -1644,7 +1644,7 @@ where
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProjectStopped {
-    container: ContainerInspectResponse,
+    pub container: ContainerInspectResponse,
 }
 
 #[async_trait]
@@ -1700,7 +1700,7 @@ where
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProjectDestroyed {
-    destroyed: Option<ContainerInspectResponse>,
+    pub destroyed: Option<ContainerInspectResponse>,
 }
 
 #[async_trait]
@@ -1978,149 +1978,6 @@ pub mod exec {
                 .send(&sender)
                 .await;
         }
-
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-pub mod tests {
-
-    use bollard::models::ContainerState;
-    use bollard::service::NetworkSettings;
-    use futures::prelude::*;
-    use hyper::{Body, Request, StatusCode};
-
-    use super::*;
-    use crate::tests::{assert_matches, assert_stream_matches, World};
-    use crate::StateExt;
-
-    #[tokio::test]
-    async fn create_start_stop_destroy_project() -> anyhow::Result<()> {
-        let world = World::new().await;
-
-        let ctx = world.context();
-
-        let project_started = assert_matches!(
-            ctx,
-            Project::Creating(ProjectCreating {
-                project_name: "my-project-test".parse().unwrap(),
-                project_id: Ulid::new(),
-                initial_key: "test".to_string(),
-                image: None,
-                from: None,
-                recreate_count: 0,
-                idle_minutes: 0,
-            }),
-            #[assertion = "Container created, attach network"]
-            Ok(Project::Attaching(ProjectAttaching {
-                container: ContainerInspectResponse {
-                    state: Some(ContainerState {
-                        status: Some(ContainerStateStatusEnum::CREATED),
-                        ..
-                    }),
-                    network_settings: Some(NetworkSettings {
-                        networks: Some(networks),
-                        ..
-                    }),
-                    ..
-                },
-                recreate_count: 0,
-            })) if networks.keys().collect::<Vec<_>>() == vec!["bridge"],
-            #[assertion = "Container attached, assigned an `id`"]
-            Ok(Project::Starting(ProjectStarting {
-                container: ContainerInspectResponse {
-                    id: Some(container_id),
-                    state: Some(ContainerState {
-                        status: Some(ContainerStateStatusEnum::CREATED),
-                        ..
-                    }),
-                    network_settings: Some(NetworkSettings {
-                        networks: Some(networks),
-                        ..
-                    }),
-                    ..
-                },
-                restart_count: 0
-            })) if networks.keys().collect::<Vec<_>>() == vec![&ctx.container_settings.network_name],
-            #[assertion = "Container started, in a running state"]
-            Ok(Project::Started(ProjectStarted {
-                container: ContainerInspectResponse {
-                    id: Some(id),
-                    state: Some(ContainerState {
-                        status: Some(ContainerStateStatusEnum::RUNNING),
-                        ..
-                    }),
-                    ..
-                },
-                ..
-            })) if id == container_id,
-        );
-
-        let delay = sleep(Duration::from_secs(10));
-        futures::pin_mut!(delay);
-        let mut project_readying = project_started
-            .unwrap()
-            .into_stream(&ctx)
-            .take_until(delay)
-            .try_skip_while(|state| future::ready(Ok(!matches!(state, Project::Ready(_)))));
-
-        let project_ready = assert_stream_matches!(
-            project_readying,
-            #[assertion = "Container is ready"]
-            Ok(Project::Ready(ProjectReady {
-                container: ContainerInspectResponse {
-                    state: Some(ContainerState {
-                        status: Some(ContainerStateStatusEnum::RUNNING),
-                        ..
-                    }),
-                    ..
-                },
-                ..
-            })),
-        );
-
-        let target_addr = project_ready
-            .as_ref()
-            .unwrap()
-            .target_addr()
-            .unwrap()
-            .unwrap();
-
-        let client = World::client(target_addr);
-
-        client
-            .request(
-                Request::get("/projects/my-project-test/status")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .map_ok(|resp| assert_eq!(resp.status(), StatusCode::OK))
-            .await
-            .unwrap();
-
-        let project_stopped = assert_matches!(
-            ctx,
-            project_ready.unwrap().stop().unwrap(),
-            #[assertion = "Container is stopped"]
-            Ok(Project::Stopped(ProjectStopped {
-                container: ContainerInspectResponse {
-                    state: Some(ContainerState {
-                        status: Some(ContainerStateStatusEnum::EXITED),
-                        ..
-                    }),
-                    ..
-                },
-            })),
-        );
-
-        assert_matches!(
-            ctx,
-            project_stopped.unwrap().destroy().unwrap(),
-            #[assertion = "Container is destroyed"]
-            Ok(Project::Destroyed(ProjectDestroyed { destroyed: _ })),
-        )
-        .unwrap();
 
         Ok(())
     }

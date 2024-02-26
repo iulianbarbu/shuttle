@@ -6,9 +6,14 @@ use http::Uri;
 
 #[derive(Parser, Debug)]
 pub struct Args {
-    /// Where to store gateway state (such as sqlite state, and certs)
+    /// Where to store gateway state (such as projects)
+    #[arg(long)]
+    pub db_state: String,
+
+    /// Where to store gateway state certs
+    // TODO: move it to RDS (before running this in ECS)
     #[arg(long, default_value = "./")]
-    pub state: PathBuf,
+    pub fs_state: PathBuf,
 
     #[command(subcommand)]
     pub command: Commands,

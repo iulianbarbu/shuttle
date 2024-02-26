@@ -41,8 +41,8 @@ impl Limits {
         }
     }
 
-    pub fn project_limit(&self) -> u32 {
-        self.project_limit
+    pub fn project_limit(&self) -> i64 {
+        self.project_limit as i64
     }
 
     /// Use the subscription quantity to set the RDS quota for this claim.

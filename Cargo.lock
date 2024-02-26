@@ -5922,6 +5922,7 @@ dependencies = [
  "chrono",
  "clap",
  "colored",
+ "ctor",
  "flate2",
  "fqdn",
  "futures",

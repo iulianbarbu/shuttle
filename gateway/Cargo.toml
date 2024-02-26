@@ -20,6 +20,7 @@ axum-server = { version = "0.5.1", features = ["tls-rustls"] }
 bollard = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
+ctor = { workspace = true }
 fqdn = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
@@ -41,7 +42,7 @@ rustls = "0.21.7"
 rustls-pemfile = "1.0.1"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-sqlx = { workspace = true, features = ["sqlite", "json", "migrate"] }
+sqlx = { workspace = true, features = ["postgres", "json", "migrate"] }
 strum = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tower = { workspace = true, features = ["steer"] }
