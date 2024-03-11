@@ -33,7 +33,7 @@ use tokio::{
     task::{JoinHandle, JoinSet},
 };
 use tonic::{Code, Request};
-use tracing::{debug, debug_span, error, info, instrument, warn, Instrument};
+use tracing::{debug, debug_span, error, field, info, instrument, warn, Instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use ulid::Ulid;
 use uuid::Uuid;
@@ -426,7 +426,10 @@ fn get_cached_output<T: DeserializeOwned>(
     prev_resources
         .iter()
         .find(|resource| {
-            resource.r#type == shuttle_resource.r#type && resource.config == shuttle_resource.config
+            // TODO: verify only the config fields that are relevant for provisioning and resource caching.
+            // For now, we don't need any configs fields for existing Shuttle resources, when provisioning
+            // them so we can leave out the configs comparison.
+            resource.r#type == shuttle_resource.r#type // && resource.config == shuttle_resource.config
         })
         .and_then(|resource| {
             let cached_output = resource.data.clone();
@@ -439,9 +442,13 @@ fn get_cached_output<T: DeserializeOwned>(
                 }
             }
         })
+        .or({
+            log(shuttle_resource.r#type, "Couldn't find a cached resource");
+            None
+        })
 }
 
-#[instrument(name = "Provisioning resources", skip_all)]
+#[instrument(name = "Provisioning resources", skip_all, fields(shuttle.resource.r#type = field::Empty, shuttle.resource.config = field::Empty))]
 #[allow(clippy::too_many_arguments)]
 async fn provision(
     project_name: &str,
